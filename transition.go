@@ -2,9 +2,9 @@ package transition
 
 import (
 	"fmt"
+	"github.com/go-pg/pg/v10/orm"
+	"reflect"
 	"strings"
-
-	"github.com/jinzhu/gorm"
 	"github.com/qor/admin"
 	"github.com/qor/qor/resource"
 	"github.com/qor/roles"
@@ -68,14 +68,14 @@ func (sm *StateMachine) Event(name string) *Event {
 }
 
 // Trigger trigger an event
-func (sm *StateMachine) Trigger(name string, value Stater, tx *gorm.DB, notes ...string) error {
+func (sm *StateMachine) Trigger(name string, value Stater, tx orm.DB, notes ...string) error {
 	var (
-		newTx    *gorm.DB
+		newTx    orm.DB
 		stateWas = value.GetState()
 	)
 
 	if tx != nil {
-		newTx = tx.New()
+		newTx = tx
 	}
 
 	if stateWas == "" {
@@ -140,15 +140,16 @@ func (sm *StateMachine) Trigger(name string, value Stater, tx *gorm.DB, notes ..
 			}
 
 			if newTx != nil {
-				scope := newTx.NewScope(value)
+				scope := orm.GetTable(reflect.TypeOf(value).Elem())
 				log := StateChangeLog{
-					ReferTable: scope.TableName(),
+					ReferTable: scope.ModelName,
 					ReferID:    GenerateReferenceKey(value, tx),
 					From:       stateWas,
 					To:         transition.to,
 					Note:       strings.Join(notes, ""),
 				}
-				return newTx.Save(&log).Error
+				_,err := newTx.Model(&log).Insert()
+				return err
 			}
 
 			return nil
@@ -160,18 +161,18 @@ func (sm *StateMachine) Trigger(name string, value Stater, tx *gorm.DB, notes ..
 // State contains State information, including enter, exit hooks
 type State struct {
 	Name   string
-	enters []func(value interface{}, tx *gorm.DB) error
-	exits  []func(value interface{}, tx *gorm.DB) error
+	enters []func(value interface{}, tx orm.DB) error
+	exits  []func(value interface{}, tx orm.DB) error
 }
 
 // Enter register an enter hook for State
-func (state *State) Enter(fc func(value interface{}, tx *gorm.DB) error) *State {
+func (state *State) Enter(fc func(value interface{}, tx orm.DB) error) *State {
 	state.enters = append(state.enters, fc)
 	return state
 }
 
 // Exit register an exit hook for State
-func (state *State) Exit(fc func(value interface{}, tx *gorm.DB) error) *State {
+func (state *State) Exit(fc func(value interface{}, tx orm.DB) error) *State {
 	state.exits = append(state.exits, fc)
 	return state
 }
@@ -193,8 +194,8 @@ func (event *Event) To(name string) *EventTransition {
 type EventTransition struct {
 	to      string
 	froms   []string
-	befores []func(value interface{}, tx *gorm.DB) error
-	afters  []func(value interface{}, tx *gorm.DB) error
+	befores []func(value interface{}, tx orm.DB) error
+	afters  []func(value interface{}, tx orm.DB) error
 }
 
 // From used to define from states
@@ -204,13 +205,13 @@ func (transition *EventTransition) From(states ...string) *EventTransition {
 }
 
 // Before register before hooks
-func (transition *EventTransition) Before(fc func(value interface{}, tx *gorm.DB) error) *EventTransition {
+func (transition *EventTransition) Before(fc func(value interface{}, tx orm.DB) error) *EventTransition {
 	transition.befores = append(transition.befores, fc)
 	return transition
 }
 
 // After register after hooks
-func (transition *EventTransition) After(fc func(value interface{}, tx *gorm.DB) error) *EventTransition {
+func (transition *EventTransition) After(fc func(value interface{}, tx orm.DB) error) *EventTransition {
 	transition.afters = append(transition.afters, fc)
 	return transition
 }

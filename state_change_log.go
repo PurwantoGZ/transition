@@ -2,6 +2,8 @@ package transition
 
 import (
 	"fmt"
+	"github.com/go-pg/pg/v10/orm"
+	"reflect"
 	"strings"
 
 	"github.com/jinzhu/gorm"
@@ -23,39 +25,44 @@ type StateChangeLog struct {
 }
 
 // GenerateReferenceKey generate reference key used for change log
-func GenerateReferenceKey(model interface{}, db *gorm.DB) string {
+func GenerateReferenceKey(model interface{}, db orm.DB) string {
 	var (
-		scope         = db.NewScope(model)
+		scope         = orm.GetTable(reflect.TypeOf(model).Elem())
 		primaryValues []string
 	)
 
-	for _, field := range scope.PrimaryFields() {
-		primaryValues = append(primaryValues, fmt.Sprint(field.Field.Interface()))
+	for _, field := range scope.PKs {
+		primaryValues = append(primaryValues, fmt.Sprint(field.SQLName))
 	}
 
 	return strings.Join(primaryValues, "::")
 }
 
 // GetStateChangeLogs get state change logs
-func GetStateChangeLogs(model interface{}, db *gorm.DB) []StateChangeLog {
+func GetStateChangeLogs(model interface{}, db orm.DB) []StateChangeLog {
 	var (
 		changelogs []StateChangeLog
-		scope      = db.NewScope(model)
+		scope      = orm.GetTable(reflect.TypeOf(model).Elem())
 	)
 
-	db.Where("refer_table = ? AND refer_id = ?", scope.TableName(), GenerateReferenceKey(model, db)).Find(&changelogs)
-
+	err := db.Model(&changelogs).Where("refer_table = ? AND refer_id = ?", scope.ModelName, GenerateReferenceKey(model, db)).Select()
+	if err != nil {
+		panic(err)
+	}
 	return changelogs
 }
 
 // GetLastStateChange gets last state change
-func GetLastStateChange(model interface{}, db *gorm.DB) *StateChangeLog {
+func GetLastStateChange(model interface{}, db orm.DB) *StateChangeLog {
 	var (
 		changelog StateChangeLog
-		scope      = db.NewScope(model)
+		scope      = orm.GetTable(reflect.TypeOf(model).Elem())
 	)
 
-	db.Where("refer_table = ? AND refer_id = ?", scope.TableName(), GenerateReferenceKey(model, db)).Last(&changelog)
+	err := db.Model(&changelog).Where("refer_table = ? AND refer_id = ?", scope.ModelName, GenerateReferenceKey(model, db)).Last()
+	if err != nil {
+		panic(err)
+	}
 	if changelog.To == "" {
 		return nil
 	}
