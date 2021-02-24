@@ -2,13 +2,13 @@ package transition_test
 
 import (
 	"errors"
-	"github.com/akbarpambudi/transition/test/utils"
+	"github.com/purwantogz/transition/test/utils"
 	"github.com/go-pg/pg/v10"
 	"github.com/go-pg/pg/v10/orm"
 	_ "github.com/mattn/go-sqlite3"
 	"testing"
 
-	"github.com/akbarpambudi/transition"
+	"github.com/purwantogz/transition"
 )
 
 type Order struct {
